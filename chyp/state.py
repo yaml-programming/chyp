@@ -14,11 +14,12 @@
 # limitations under the License.
 
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
 import os.path
 from typing import Any, Dict, List, Optional, Tuple
 import networkx as nx
+import yaml
 
 from . import parser
 from .graph import Graph, GraphError, gen, perm, identity, redistributer
@@ -27,7 +28,7 @@ from .tactic import Tactic
 from .tactic.simptac import SimpTac
 from .tactic.ruletac import RuleTac
 
-Meta = Any
+Part = Tuple[int,int,str,str]
 
 def v_args(meta=False):
     return lambda f: f
@@ -94,10 +95,17 @@ class State:
         self.rewrites: Dict[str, RewriteState] = dict()
         self.errors: List[Tuple[str, int, str]] = list()
         self.parts: List[Tuple[int, int, str, str]] = list()
-        self.tree = nx.DiGraph()
         self.parsed = False
 
-    def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Tuple[int,int,str,str]]]:
+    def transform(self, tree: Generator[yaml.Token]):
+        for token in tree:
+            match token:
+                case yaml.ScalarToken():
+                    self.gen(
+                        (token.start_mark.index, token.end_mark.index, "refl", ""),
+                        ['', [(token.value, 1)], [(token.value, 1)], None])
+
+    def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Part]]:
         p0 = (0, self.parts[0]) if len(self.parts) >= 1 else None
         for (i,p) in enumerate(self.parts):
             if p[0] <= pos:
@@ -106,7 +114,7 @@ class State:
                     return (i,p)
         return p0
 
-    def part_at(self, pos: int) -> Optional[Tuple[int,int,str,str]]:
+    def part_at(self, pos: int) -> Optional[Part]:
         p = self.part_with_index_at(pos)
         return p[1] if p else None
         
@@ -161,7 +169,7 @@ class State:
         return False
 
     @v_args(meta=True)
-    def perm(self, meta: Meta, items: List[Any]) -> Graph | None:
+    def perm(self, meta: Part, items: List[Any]) -> Graph | None:
         try:
             # If no explicit permutation is provided, the permutation
             # is assumed to be a swap on two vertices.
@@ -187,7 +195,7 @@ class State:
         return items
 
     @v_args(meta=True)
-    def redistribution(self, meta: Meta,
+    def redistribution(self, meta: Part,
                        items: list[Any]) -> Graph | None:
         try:
             # A redistributer on the monoidal unit is the empty diagram.
@@ -218,7 +226,7 @@ class State:
         return items
 
     @v_args(meta=True)
-    def term_ref(self, meta: Meta, items: List[Any]) -> Optional[Graph]:
+    def term_ref(self, meta: Part, items: List[Any]) -> Optional[Graph]:
         s = str(items[0])
         if self.namespace:
             s = self.namespace + '.' + s
@@ -230,7 +238,7 @@ class State:
             return None
 
     @v_args(meta=True)
-    def rule_ref(self, meta: Meta, items: List[Any]) -> Optional[Rule]:
+    def rule_ref(self, meta: Part, items: List[Any]) -> Optional[Rule]:
         s = str(items[0])
         if self.namespace and s != 'refl':
             s = self.namespace + '.' + s
@@ -248,7 +256,7 @@ class State:
             return None
 
     @v_args(meta=True)
-    def seq(self, meta: Meta, items: List[Any]) -> Optional[Graph]:
+    def seq(self, meta: Part, items: List[Any]) -> Optional[Graph]:
         if items[0] and items[1]:
             g = None
             try:
@@ -260,13 +268,13 @@ class State:
             return None
 
     @v_args(meta=True)
-    def show(self, meta: Meta, items: List[Any]) -> None:
+    def show(self, meta: Part, items: List[Any]) -> None:
         rule = items[0]
         if rule:
-            self.parts.append((meta.start_pos, meta.end_pos, 'rule', rule.name))
+            self.parts.append((meta[0], meta[1], 'rule', rule.name))
 
     @v_args(meta=True)
-    def gen(self, meta: Meta, items: List[Any]) -> None:
+    def gen(self, meta: Part, items: List[Any]) -> None:
         name = items[0]
         domain = items[1]
         codomain = items[2]
@@ -280,20 +288,20 @@ class State:
             if existing_domain != domain or existing_codomain != codomain:
                 self.errors.append((self.file_name, meta.line, "Term '{}' already defined with incompatible type {} -> {}.".format(name, existing_domain, existing_codomain)))
                 self.errors.append((self.file_name, meta.line, "(Trying to add) {} -> {}.".format(domain, codomain)))
-        self.parts.append((meta.start_pos, meta.end_pos, 'gen', name))
+        self.parts.append((meta[0], meta[1], 'gen', name))
 
     @v_args(meta=True)
-    def let(self, meta: Meta, items: List[Any]) -> None:
+    def let(self, meta: Part, items: List[Any]) -> None:
         name, graph = items
         if name not in self.graphs:
             if graph:
                 self.graphs[name] = graph
         else:
             self.errors.append((self.file_name, meta.line, "Term '{}' already defined.".format(name)))
-        self.parts.append((meta.start_pos, meta.end_pos, 'let', name))
+        self.parts.append((meta[0], meta[1], 'let', name))
 
     @v_args(meta=True)
-    def rule(self, meta: Meta, items: List[Any]) -> None:
+    def rule(self, meta: Part, items: List[Any]) -> None:
         name, lhs, invertible, rhs = items
         if not name in self.rules:
             if lhs and rhs:
@@ -305,10 +313,10 @@ class State:
                     self.errors.append((self.file_name, meta.line, str(e)))
         else:
             self.errors.append((self.file_name, meta.line, "Rule '{}' already defined.".format(name)))
-        self.parts.append((meta.start_pos, meta.end_pos, 'rule', name))
+        self.parts.append((meta[0], meta[1], 'rule', name))
 
     @v_args(meta=True)
-    def def_statement(self, meta: Meta, items: List[Any]) -> None:
+    def def_statement(self, meta: Part, items: List[Any]) -> None:
         name = items[0]
         graph = items[1]
         (fg, bg) = items[2] if items[2] else ('', '')
@@ -344,7 +352,7 @@ class State:
         else:
             self.errors.append((self.file_name, meta.line,
                                 f'Rule "{rule_name}" already defined.'))
-        self.parts.append((meta.start_pos, meta.end_pos, 'rule', rule_name))
+        self.parts.append((meta[0], meta[1], 'rule', rule_name))
 
     def gen_color(self, items: List[Any]) -> Tuple[str,str]:
         return (items[1], items[0]) if len(items) == 2 else ('', items[0])
@@ -353,7 +361,7 @@ class State:
         return '#' + ''.join([str(it) for it in items])
 
     @v_args(meta=True)
-    def import_statement(self, meta: Meta, items: List[Any]) -> None:
+    def import_statement(self, meta: Part, items: List[Any]) -> None:
         mod = items[0]
         namespace = items[1] or ''
         import_lets = items[2:]
@@ -374,13 +382,13 @@ class State:
         except FileNotFoundError:
             self.errors.append((self.file_name, meta.line, 'File not found: {}'.format(file_name)))
 
-        self.parts.append((meta.start_pos, meta.end_pos, 'import', file_name))
+        self.parts.append((meta[0], meta[1], 'import', file_name))
 
     def import_let(self, items: List[Any]) -> Tuple[str, Graph]:
         return (items[0], items[1])
 
     @v_args(meta=True)
-    def rewrite(self, meta: Meta, items: List[Any]) -> None:
+    def rewrite(self, meta: Part, items: List[Any]) -> None:
         converse = True if items[0] else False
         base_name = items[1]
         name = '-' + base_name if converse else base_name
@@ -389,7 +397,7 @@ class State:
         rw_parts = items[3:]
 
         if len(rw_parts) == 0:
-            self.parts.append((meta.start_pos, meta.end_pos, "rewrite", name))
+            self.parts.append((meta[0], meta[1], "rewrite", name))
             self.rewrites[name] = RewriteState(self.sequence, self, lhs=term, stub=True)
         else:
             start = meta.start_pos
@@ -449,7 +457,7 @@ class State:
                     self.errors.append((self.file_name, meta.line, str(e)))
 
     @v_args(meta=True)
-    def rewrite_part(self, meta: Meta, items: List[Any]) -> Tuple[int, int, int, int, bool, str, List[str], Optional[Graph]]:
+    def rewrite_part(self, meta: Part, items: List[Any]) -> Tuple[int, int, int, int, bool, str, List[str], Optional[Graph]]:
         equiv = items[0]
         t_start,t_end,rhs = items[1]
         if items[2]:
@@ -480,9 +488,9 @@ class State:
 
 
     @v_args(meta=True)
-    def term_hole(self, meta: Meta, items: List[Any]) -> Tuple[int, int, Optional[Graph]]:
+    def term_hole(self, meta: Part, items: List[Any]) -> Tuple[int, int, Optional[Graph]]:
         t = items[0] if len(items) != 0 else None
-        return (meta.start_pos, meta.end_pos, t)
+        return (meta[0], meta[1], t)
 
     def nested_term(self, items: List[Any]) -> Optional[Graph]:
         return items[1]
@@ -512,7 +520,7 @@ def module_filename(name: str, current_file: str) -> str:
 #             stub = not (':' in name)
 #             self.rewrites[name] = RewriteState(sequence, self, (t_start, t_end), equiv, tactic, tactic_args, lhs, rhs, lhs_match, rhs_match, stub)
 
-#     def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Tuple[int,int,str,str]]]:
+#     def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Meta]]:
 #         p0 = (0, self.parts[0]) if len(self.parts) >= 1 else None
 #         for (i,p) in enumerate(self.parts):
 #             if p[0] <= pos:
@@ -521,7 +529,7 @@ def module_filename(name: str, current_file: str) -> str:
 #                     return (i,p)
 #         return p0
 
-#     def part_at(self, pos: int) -> Optional[Tuple[int,int,str,str]]:
+#     def part_at(self, pos: int) -> Optional[Meta]:
 #         p = self.part_with_index_at(pos)
 #         return p[1] if p else None
 

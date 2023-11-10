@@ -222,29 +222,24 @@ class MainWindow(QMainWindow):
             self.active_editor.show_errors()
 
     def add_rewrite_step(self) -> None:
-        pass
-        # if self.active_editor:
-        #     self.active_editor.code_view.add_line_below("  = ? by ")
+        if self.active_editor:
+            self.active_editor.code_view.add_line_below("  = ? by ")
 
     def repeat_rewrite_step(self) -> None:
-        pass
-        # if self.active_editor:
-        #     self.active_editor.repeat_step_at_cursor()
+        if self.active_editor:
+            self.active_editor.repeat_step_at_cursor()
 
     def next_rewrite(self) -> None:
-        pass
-        # if self.active_editor:
-        #     self.active_editor.next_rewrite_at_cursor()
+        if self.active_editor:
+            self.active_editor.next_rewrite_at_cursor()
 
     def next_part(self) -> None:
-        pass
-        # if self.active_editor:
-        #     self.active_editor.next_part(step=1)
+        if self.active_editor:
+            self.active_editor.next_part(step=1)
 
     def previous_part(self) -> None:
-        pass
-        # if self.active_editor:
-        #     self.active_editor.next_part(step=-1)
+        if self.active_editor:
+            self.active_editor.next_part(step=-1)
 
     def next_tab(self) -> None:
         c = self.tabs.count()
