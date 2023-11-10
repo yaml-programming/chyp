@@ -115,12 +115,12 @@ class ChypDocument(QTextDocument):
         file_name, _ = QFileDialog.getSaveFileName(self.parent_widget,
                                                    "Save File",
                                                    last_dir,
-                                                   'chyp files (*.chyp)',
-                                                   'chyp files (*.chyp)',
+                                                   'yaml files (*.yaml)',
+                                                   'yaml files (*.yaml)',
                                                    QFileDialog.Option.DontConfirmOverwrite)
         if file_name:
             if QFileInfo(file_name).suffix() == '':
-                file_name += '.chyp'
+                file_name += '.yaml'
 
             fi = QFileInfo(file_name)
             if fi.exists():

@@ -15,73 +15,15 @@
 
 import os.path
 from typing import Dict, Optional, Tuple
-from lark import Lark, UnexpectedInput, Tree
+import networkx as nx
+from nx_yaml import NxSafeLoader
+import yaml
 
 from . import state
 
-GRAMMAR = Lark("""
-    start : statement*
-    ?statement : import_statement | gen | let | def_statement | rule | rewrite | show
-    gen : "gen" var ":" type_term "->" type_term [ gen_color ]
-    def_statement : "def" var "=" term [ gen_color ]
-    gen_color : "\\\"" color "\\\"" | "\\\"" color "\\\"" "\\\"" color "\\\""
-    let : "let" var "=" term
-    rule : "rule" var ":" term (eq | le) term
-    rewrite : "rewrite" [converse] var ":" term rewrite_part*
-    rewrite_part : (eq | le) term_hole [ "by" tactic ]
-    converse : "-"
-
-    type_term : type_element ("*" type_element)* | num
-    type_element: IDENT ["^" num]
-
-    LPAREN: "("
-    RPAREN: ")"
-    tactic : [ converse ] IDENT | IDENT LPAREN [ TACTIC_ARG ("," TACTIC_ARG)* ] ")"
-    ?term  : par_term | seq
-    ?par_term : nested_term | par | perm | id | id0
-              | redistribution | term_ref
-    nested_term : LPAREN term RPAREN
-    par : par_term "*" par_term
-    seq : term ";" term
-    perm : "sw" [ "[" type_term "]" ] [ "[" perm_indices "]" ]
-    perm_indices : num ("," num)+
-    id : "id" [ "[" type_element "]" ]
-    id0 : "id0"
-    redistribution : "redistribute" ["[" IDENT "]"]("[" size_list "to" size_list "]")
-    size_list: num ("," num)*
-    show : "show" rule_ref
-
-    import_statement : "import" module_name [ "as" var ] [ "(" import_let ("," import_let)* ")" ]
-    import_let : var "=" term
-
-    eq : "=" | "=="
-    le : "<=" | "~>"
-    num : INT
-    module_name : IDENT
-    var : IDENT
-    term_ref : IDENT
-    rule_ref : IDENT
-    term_hole : term | "?"
-    color : HEXDIGIT HEXDIGIT HEXDIGIT HEXDIGIT HEXDIGIT HEXDIGIT
-    IDENT: ("_"|LETTER) ("_"|"."|LETTER|DIGIT)*
-    TACTIC_ARG: /[^(),]+/
-
-    %import common.LETTER
-    %import common.DIGIT
-    %import common.HEXDIGIT
-    %import common.INT
-    %import common.WS
-    %import common.SH_COMMENT
-    %ignore WS
-    %ignore SH_COMMENT
-    """,
-    parser='lalr',
-    propagate_positions=True,
-    maybe_placeholders=True)
-
 
 # cache parse trees for imported files and only re-parse if the file changes
-parse_cache: Dict[str, Tuple[float, Tree]] = dict()
+parse_cache: Dict[str, Tuple[float, nx.Graph]] = dict()
 
 def parse(code: str='', file_name: str='', namespace: str='', parent: Optional[state.State] = None) -> state.State:
     global parse_cache
@@ -112,19 +54,21 @@ def parse(code: str='', file_name: str='', namespace: str='', parent: Optional[s
                 tree = parse_cache[file_name][1]
             else:
                 with open(file_name) as f:
-                    tree = GRAMMAR.parse(f.read())
+                    tree = yaml.compose(f, Loader=NxSafeLoader)
                 parse_cache[file_name] = (mtime, tree)
         else:
-            tree = GRAMMAR.parse(code)
-        parse_data.transform(tree)
+            tree = yaml.compose(code, Loader=NxSafeLoader)
+        parse_data.tree = tree
         parse_data.parsed = True
-    except UnexpectedInput as e:
+    except yaml.MarkedYAMLError as e:
+        # parse_data.errors += [(file_name, "meta.line", str(e))]
+        # raise e
         msg = 'Parse error: '
-        e_lines = e.get_context(code).splitlines()
+        e_lines = e.context.splitlines()
         if len(e_lines) >= 2:
-            parse_data.errors += [(file_name, e.line, msg + e_lines[0] + '\n' + len(msg)*' ' + e_lines[1])]
+            parse_data.errors += [(file_name, e.context_mark.line, msg + e_lines[0] + '\n' + len(msg)*' ' + e_lines[1])]
         else:
-            parse_data.errors += [(file_name, e.line, msg + e_lines[0])]
+            parse_data.errors += [(file_name, e.context_mark.line, msg + e_lines[0])]
 
     if parent:
         parent.sequence = parse_data.sequence

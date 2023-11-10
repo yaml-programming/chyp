@@ -16,8 +16,10 @@
 from __future__ import annotations
 from typing import Iterable, Iterator, Any
 from typing import TypeAlias
-import json
 import copy
+from nx_yaml import NxSafeLoader
+
+import yaml
 
 
 # Non-default vertex types are identified by a string label
@@ -1062,24 +1064,16 @@ def redistributer(domain: list[tuple[VType, int]],
 
 
 def load_graph(path: str) -> Graph:
-    """Load a .chyp graph file from the given path."""
+    """Load a .yaml graph file from the given path."""
 
-    with open(path) as f:
-        g = graph_from_json(f.read())
-    return g
-
-
-def graph_from_json(json_string: str) -> Graph:
-    """Load a graph from the given JSON string."""
-
-    j = json.loads(json_string)
+    j = yaml.compose(path, Loader=NxSafeLoader)
     g = Graph()
-    for v, vd in j["vertices"].items():
+    for v, vd in j.nodes:
         g.add_vertex(x=float(vd["x"] if "x" in vd else 0.0),
                      y=float(vd["y"] if "y" in vd else 0.0),
                      value=vd["value"] if "value" in vd else "",
                      name=int(v))
-    for e, ed in j["edges"].items():
+    for e, ed in j.edges:
         g.add_edge(s=[int(v) for v in ed["s"]],
                    t=[int(v) for v in ed["t"]],
                    value=ed["value"] if "value" in ed else "",

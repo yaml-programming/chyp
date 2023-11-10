@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
             file_name, _ = QFileDialog.getOpenFileName(self,
                                                        "Open File",
                                                        last_dir,
-                                                       'chyp files (*.chyp)')
+                                                       'yaml files (*.yaml)')
 
         ed: Optional[editor.Editor] = None
 
@@ -222,24 +222,29 @@ class MainWindow(QMainWindow):
             self.active_editor.show_errors()
 
     def add_rewrite_step(self) -> None:
-        if self.active_editor:
-            self.active_editor.code_view.add_line_below("  = ? by ")
+        pass
+        # if self.active_editor:
+        #     self.active_editor.code_view.add_line_below("  = ? by ")
 
     def repeat_rewrite_step(self) -> None:
-        if self.active_editor:
-            self.active_editor.repeat_step_at_cursor()
+        pass
+        # if self.active_editor:
+        #     self.active_editor.repeat_step_at_cursor()
 
     def next_rewrite(self) -> None:
-        if self.active_editor:
-            self.active_editor.next_rewrite_at_cursor()
+        pass
+        # if self.active_editor:
+        #     self.active_editor.next_rewrite_at_cursor()
 
     def next_part(self) -> None:
-        if self.active_editor:
-            self.active_editor.next_part(step=1)
+        pass
+        # if self.active_editor:
+        #     self.active_editor.next_part(step=1)
 
     def previous_part(self) -> None:
-        if self.active_editor:
-            self.active_editor.next_part(step=-1)
+        pass
+        # if self.active_editor:
+        #     self.active_editor.next_part(step=-1)
 
     def next_tab(self) -> None:
         c = self.tabs.count()

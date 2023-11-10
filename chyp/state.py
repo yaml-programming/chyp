@@ -18,9 +18,7 @@ from typing import Dict, List, Optional, Tuple
 
 import os.path
 from typing import Any, Dict, List, Optional, Tuple
-import lark
-from lark import v_args
-from lark.tree import Meta
+import networkx as nx
 
 from . import parser
 from .graph import Graph, GraphError, gen, perm, identity, redistributer
@@ -29,6 +27,10 @@ from .tactic import Tactic
 from .tactic.simptac import SimpTac
 from .tactic.ruletac import RuleTac
 
+Meta = Any
+
+def v_args(meta=False):
+    return lambda f: f
 
 class RewriteState:
     UNCHECKED = 0
@@ -80,7 +82,7 @@ class RewriteState:
         self.tactic.run_check()
 
 
-class State(lark.Transformer):
+class State:
     def __init__(self, namespace: str='', file_name: str='') -> None:
         self.namespace = namespace
         self.file_name = file_name
@@ -92,6 +94,7 @@ class State(lark.Transformer):
         self.rewrites: Dict[str, RewriteState] = dict()
         self.errors: List[Tuple[str, int, str]] = list()
         self.parts: List[Tuple[int, int, str, str]] = list()
+        self.tree = nx.DiGraph()
         self.parsed = False
 
     def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Tuple[int,int,str,str]]]:
