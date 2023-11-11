@@ -14,13 +14,11 @@
 # limitations under the License.
 
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, Generator, Iterator, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import os.path
 from typing import Any, Dict, List, Optional, Tuple
-import networkx as nx
-import yaml
+from .transformer import Meta, YamlTransformer, v_args
 
 from . import parser
 from .graph import Graph, GraphError, gen, perm, identity, redistributer
@@ -29,23 +27,6 @@ from .tactic import Tactic
 from .tactic.simptac import SimpTac
 from .tactic.ruletac import RuleTac
 
-Part = Tuple[int,int,str,str]
-
-
-@dataclass
-class Meta:
-    empty = True
-    start_pos: int | None = None
-    line: int | None = None
-    column: int | None = None
-    end_line: int | None = None
-    end_column: int | None = None
-    end_pos: int | None = None
-    # orig_expansion: 'List[TerminalDef]' | None = None
-    match_tree: bool | None = None
-
-def v_args(meta=False):
-    return lambda f: f
 
 class RewriteState:
     UNCHECKED = 0
@@ -97,7 +78,7 @@ class RewriteState:
         self.tactic.run_check()
 
 
-class State:
+class State(YamlTransformer):
     def __init__(self, namespace: str='', file_name: str='') -> None:
         self.namespace = namespace
         self.file_name = file_name
@@ -111,89 +92,7 @@ class State:
         self.parts: List[Tuple[int, int, str, str]] = list()
         self.parsed = False
 
-    def transform(self, tree: Generator[yaml.Token]):
-        tokens = iter(tree)
-        return self.transform2(tokens)
-
-    def transform2(self, tokens: Iterator[yaml.Token]):
-        while token := next(tokens, None):
-            match token:
-                case yaml.BlockSequenceStartToken():
-                    return self.transform_sequence(token, tokens)
-                case yaml.BlockMappingStartToken():
-                    return self.transform_mapping(token, tokens)
-                case yaml.ScalarToken():
-                    return self.transform_scalar(token)
-
-    def transform_sequence(self,
-                           left_token: yaml.BlockSequenceStartToken,
-                           tokens: Iterator[yaml.Token]):
-        seq = []
-        while token := next(tokens, None):
-            match token:
-                case yaml.BlockEndToken():
-                    meta = Meta(
-                        start_pos=left_token.start_mark.index,
-                        line=left_token.start_mark.line,
-                        column=left_token.start_mark.column,
-                        end_pos=token.end_mark.index,
-                        end_line=token.end_mark.line,
-                        end_column=token.end_mark.column)
-                    if len(seq) == 0:
-                        return self.term_hole(meta, seq)
-                    if len(seq) == 1:
-                        return self.term_hole(meta, seq)
-                    left = seq[0]
-                    right = seq[1]
-
-                    rule = self.rule(
-                        meta,
-                        ['', left, True, right])
-                    return self.show(meta, [rule])
-
-                case yaml.BlockEntryToken():
-                    right = self.transform(tokens)
-                    seq.append(right)
-
-    def transform_mapping(self,
-                          left_token: yaml.BlockMappingStartToken,
-                          tokens: Iterator[yaml.Token]):
-        key = self.transform_mapping_key(tokens)
-        value = self.transform(tokens)
-        while token := next(tokens, None):
-            match token:
-                case yaml.BlockEndToken():
-                    meta = Meta(
-                        start_pos=left_token.start_mark.index,
-                        line=left_token.start_mark.line,
-                        column=left_token.start_mark.column,
-                        end_pos=token.end_mark.index,
-                        end_line=token.end_mark.line,
-                        end_column=token.end_mark.column)
-                    return self.gen(meta, ['name', [], [], None])
-                    return self.rewrite(meta, [True, rule_name, key, value])
-                    self.rule(meta, [rule_name, key, False, value])
-                    return self.show(meta, [self.rule_ref(meta, [rule_name])])
-
-    def transform_mapping_key(self,
-                              tokens: Iterator[yaml.Token]):
-        key = self.transform(tokens)
-        next(tokens, None) # ValueToken
-        return key
-
-    def transform_scalar(self, token: yaml.ScalarToken):
-        meta = Meta(
-            start_pos=token.start_mark.index,
-            line=token.start_mark.line,
-            column=token.start_mark.column,
-            end_pos=token.end_mark.index,
-            end_line=token.end_mark.line,
-            end_column=token.end_mark.column)
-        return self.gen(
-            meta,
-            [token.value, [(token.value, 1)], [(token.value, 1)], None])
-
-    def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Part]]:
+    def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Tuple[int,int,str,str]]]:
         p0 = (0, self.parts[0]) if len(self.parts) >= 1 else None
         for (i,p) in enumerate(self.parts):
             if p[0] <= pos:
@@ -202,7 +101,7 @@ class State:
                     return (i,p)
         return p0
 
-    def part_at(self, pos: int) -> Optional[Part]:
+    def part_at(self, pos: int) -> Optional[Tuple[int,int,str,str]]:
         p = self.part_with_index_at(pos)
         return p[1] if p else None
         
@@ -608,7 +507,7 @@ def module_filename(name: str, current_file: str) -> str:
 #             stub = not (':' in name)
 #             self.rewrites[name] = RewriteState(sequence, self, (t_start, t_end), equiv, tactic, tactic_args, lhs, rhs, lhs_match, rhs_match, stub)
 
-#     def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Meta]]:
+#     def part_with_index_at(self, pos: int) -> Optional[Tuple[int, Tuple[int,int,str,str]]]:
 #         p0 = (0, self.parts[0]) if len(self.parts) >= 1 else None
 #         for (i,p) in enumerate(self.parts):
 #             if p[0] <= pos:
@@ -617,7 +516,7 @@ def module_filename(name: str, current_file: str) -> str:
 #                     return (i,p)
 #         return p0
 
-#     def part_at(self, pos: int) -> Optional[Meta]:
+#     def part_at(self, pos: int) -> Optional[Tuple[int,int,str,str]]:
 #         p = self.part_with_index_at(pos)
 #         return p[1] if p else None
 
