@@ -42,7 +42,8 @@ class YamlTransformer:
                 case yaml.ScalarToken() if token.value == 'gen':
                     return self.transform_dispatch_gen(token, tokens)
                 case yaml.ScalarToken():
-                    return self.transform_scalar(token)
+                    meta = Meta(token, token)
+                    return self.gen(meta, [token.value, [('', 1)], [('', 1)], None])
 
     def transform_dispatch_gen(self,
                                gen_token: yaml.ScalarToken | None,
@@ -55,11 +56,12 @@ class YamlTransformer:
                     self.transform_gen_mapping(token, tokens)
                     return
                 case yaml.KeyToken():
-                    self.transform_dispatch_gen(token, tokens)
+                    continue
                 case yaml.ValueToken():
-                    self.transform_dispatch_gen(token, tokens)
+                    continue
                 case yaml.ScalarToken():
-                    self.transform_scalar(token)
+                    meta = Meta(token, token)
+                    self.gen(meta, [token.value, [], [], None])
                     return
 
     def transform_sequence(self,
@@ -89,25 +91,25 @@ class YamlTransformer:
     def transform_mapping(self,
                           left_token: yaml.BlockMappingStartToken,
                           tokens: Iterator[yaml.Token]):
-        entry_token = None
-        entry_token_name = None
+        key_token = None
         tokens = itertools.chain([left_token], tokens)
         while token := next(tokens, None):
             match token:
-                case yaml.ScalarToken() if not entry_token_name:
-                    entry_token = token
-                    entry_token_name = token.value
+                case yaml.ScalarToken() if token.value == 'gen':
+                    return self.transform_gen_mapping(left_token, tokens)
+                case yaml.ScalarToken() if not key_token:
+                    key_token = token
                 case yaml.BlockEndToken():
                     return
                 case yaml.StreamEndToken():
                     return
-                case _ if entry_token_name:
-                    meta = Meta(entry_token, entry_token)
-                    self.transform_mapping_entry(entry_token, tokens)
-                    entry_ref = self.term_ref(entry_token, [entry_token_name])
-                    # self.gen(meta, [entry_token_name, [], [], None])
-                    meta = Meta(entry_token, entry_token)
-                    self.rule(meta, [entry_token_name, entry_ref, False, entry_ref])
+                case _ if key_token:
+                    self.transform_mapping_entry(key_token, tokens)
+                    # meta = Meta(key_token, key_token)
+                    # entry_ref = self.term_ref(meta, [key_token_name])
+                    # # self.gen(meta, [entry_token_name, [], [], None])
+                    # meta = Meta(key_token, key_token)
+                    # self.rule(meta, [key_token_name, entry_ref, False, entry_ref])
 
     def transform_mapping_entry(self,
                                 left_token: yaml.ValueToken,
@@ -124,27 +126,21 @@ class YamlTransformer:
                 case yaml.ScalarToken() if not key_token_name:
                     key_token = token
                     key_token_name = token.value
-                    meta = Meta(key_token, key_token)
-                    self.gen(meta, [key_token_name, [], [], None])
                 case yaml.ScalarToken() if not value_token_name:
                     value_token = token
                     value_token_name = token.value
+                case _ if key_token_name and value_token_name:
+                    meta = Meta(key_token, key_token)
+                    self.gen(meta, [key_token_name, [], [], None])
                     meta = Meta(value_token, value_token)
                     self.gen(meta, [value_token_name, [], [], None])
-                case _ if key_token_name and value_token_name:
                     meta = Meta(left_token, token)
                     key_ref = self.term_ref(key_token, [key_token_name])
                     value_ref = self.term_ref(value_token, [value_token_name])
-                    return self.rule(meta,
-                        ["rule", key_ref, False, value_ref])
+                    return self.seq(meta,
+                        [key_ref, value_ref])
                 case _:
                     return
-
-    def transform_gen(self, token: yaml.ScalarToken, tokens: Tokens):
-        while token := next(tokens, None):
-            self.transform_mapping(None, tokens)
-        meta = Meta(token, token)
-        return self.gen(meta, [token.value, self.id([None])])
 
     def transform_gen_mapping(self, gen_token: yaml.ScalarToken, tokens: Tokens):
         while token := next(tokens, None):
@@ -158,41 +154,32 @@ class YamlTransformer:
                                 gen_token: yaml.ValueToken,
                                 tokens: Iterator[yaml.Token]):
         key_token, value_token = None, None
-        key_token_name = None
+        key_token_name, value_token_name = None, None
         tokens = itertools.chain([gen_token], tokens)
         while token := next(tokens, None):
             match token:
                 case yaml.BlockMappingStartToken():
                     continue
-                case yaml.BlockEndToken():
-                    if key_token and value_token:
-                        meta = Meta(key_token, token)
-                        self.gen(meta,
-                            [key_token.value, [(key_token.value, 1)], [(value_token.value, 1)], None])
-                    return
-                case yaml.BlockEndToken():
-                    if key_token and value_token:
-                        meta = Meta(key_token, token)
-                        self.gen(meta,
-                            [key_token.value, [(key_token.value, 1)], [(value_token.value, 1)], None])
-                    return
+                case yaml.BlockEndToken() if key_token_name and value_token_name:
+                    meta = Meta(key_token, key_token)
+                    self.gen(meta, [key_token_name, [('', 1)], [('', 1)], None])
+                    meta = Meta(value_token, value_token)
+                    self.gen(meta, [value_token_name, [('', 1)], [('', 1)], None])
+
+                    key_ref = self.term_ref(key_token, [key_token_name])
+                    value_ref = self.term_ref(value_token, [value_token_name])
+                    meta = Meta(gen_token, token)
+                    self.rule(meta, [key_token_name, key_ref, False, value_ref])
+                    key_token_name, value_token_name = None, None
                 case yaml.KeyToken():
                     key_token = token
-                    key_token_name = token.value
-                    self.transform_dispatch_gen(key_token, tokens)
                 case yaml.ValueToken():
                     value_token = token
-                    self.transform_dispatch_gen(value_token, tokens)
-                case yaml.ScalarToken() if not key_token:
-                    meta = Meta(token, token)
-                    self.gen(meta, [token.value, [], [(token.value, 1)], None])
-                case yaml.ScalarToken() if not value_token:
-                    meta = Meta(token, token)
-                    self.gen(meta, [token.value, [(token.value, 1)], [(key_token_name, 1)], None])
+                case yaml.ScalarToken() if not key_token_name:
+                    key_token = token
+                    key_token_name = token.value
+                case yaml.ScalarToken() if not value_token_name:
+                    value_token = token
+                    value_token_name = token.value
                 case _:
-                    if not key_token:
-                        key_token = token
-                        self.transform_gen_dispatch(key_token, tokens)
-                    elif not value_token:
-                        value_token = token
-                        self.transform_gen_dispatch(value_token, tokens)
+                    return
