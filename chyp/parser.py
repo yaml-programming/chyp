@@ -58,7 +58,7 @@ def parse(code: str='', file_name: str='', namespace: str='', parent: Optional[s
                 parse_cache[file_name] = (mtime, tree)
         else:
             tree = yaml.scan(code, Loader=NxSafeLoader)
-        parse_data.transform(iter(tree))
+        parse_data.transform(tree)
         parse_data.parsed = True
     except yaml.MarkedYAMLError as e:
         # parse_data.errors += [(file_name, "meta.line", str(e))]

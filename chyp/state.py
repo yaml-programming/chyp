@@ -484,7 +484,7 @@ class State(YamlTransformer):
 
 
 def module_filename(name: str, current_file: str) -> str:
-    return os.path.join(os.path.dirname(current_file), *name.split('.')) + '.chyp'
+    return os.path.join(os.path.dirname(current_file), *name.split('.')) + '.yaml'
 
 # class State:
 #     def __init__(self) -> None:

@@ -1,3 +1,38 @@
+The goal of this fork is building an IDE for editing YAML. This is accomplished by replacing Lark and Chyp with PyYAML and YAML.
+
+By interpreting YAML documents as Hypergraphs we provide a syntax rid of keywords such as `rule` or `rewrite`. Our aim is to keep this human-friendly with the intention of making a big contribution in the Math and Programming ecosystems. We choose to build on YAML to make this ready for multiplatform and unicode.
+
+# Generators
+```yaml
+μ: { 2: 1 }
+η: { 0: 1 }
+...
+```
+# Rules
+```yaml
+...
+---
+associativity:
+  - [ { μ: 0 }, μ ]
+  - [ { 0: μ }, μ ]
+unit left:
+  - [ { η: 0 }, μ ]
+  - 0
+unit right:
+  - [ { 0: η }, μ ]
+  - 0
+...
+```
+# Rewrites
+```yaml
+...
+---
+```
+
+Original README below.
+
+---
+
 Chyp (pronounced "chip") is an interactive theorem prover for symmetric monoidal categories (SMCs), a.k.a. process theories. Symmetric monoidal categories are a very general way to reason about processes that can be composed in sequence or in parallel. String diagrams are a convenient notation for maps in an SMC, where processes are represented as boxes connected to each other by wires.
 
 ![Chyp screenshot](https://github.com/akissinger/chyp/raw/master/chyp-screen.png)
