@@ -61,14 +61,7 @@ def parse(code: str='', file_name: str='', namespace: str='', parent: Optional[s
         parse_data.transform(tree)
         parse_data.parsed = True
     except yaml.MarkedYAMLError as e:
-        # parse_data.errors += [(file_name, "meta.line", str(e))]
-        # raise e
-        msg = 'Parse error: '
-        e_lines = e.context.splitlines()
-        if len(e_lines) >= 2:
-            parse_data.errors += [(file_name, e.context_mark.line, msg + e_lines[0] + '\n' + len(msg)*' ' + e_lines[1])]
-        else:
-            parse_data.errors += [(file_name, e.context_mark.line, msg + e_lines[0])]
+        parse_data.errors += [(file_name, e.problem_mark.line, e.problem)]
 
     if parent:
         parent.sequence = parse_data.sequence

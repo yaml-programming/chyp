@@ -15,15 +15,12 @@ class Meta:
     end_token: yaml.Token
 
     def __post_init__(self):
-        self.empty = True
         self.start_pos: int | None = self.start_token.start_mark.index
         self.line: int | None = self.start_token.start_mark.line
         self.column: int | None = self.start_token.start_mark.column
         self.end_line: int | None = self.end_token.end_mark.line
         self.end_column: int | None = self.end_token.end_mark.column
         self.end_pos: int | None = self.end_token.end_mark.index
-        # orig_expansion = None #: 'List[TerminalDef]' | None = None
-        # self.match_tree: bool | None = None
 
 
 class YamlTransformer:
@@ -34,15 +31,24 @@ class YamlTransformer:
                 case yaml.StreamEndToken():
                     return
                 case _:
-                    self.transform_dispatch(tokens)
+                    tokens = itertools.chain([token], tokens)
+                    self.transform_document(tokens)
 
-    def transform_dispatch(self, tokens: Iterator[yaml.Token]):
+    def transform_document(self, tokens: Iterator[yaml.Token]):
+        document_name = None
+        while token := next(tokens, None):
+            match token:
+                case yaml.DocumentEndToken():
+                    return document_name
+                case _:
+                    tokens = itertools.chain([token], tokens)
+                    document_name = self.transform_object(tokens)
+
+    def transform_object(self, tokens: Iterator[yaml.Token]):
         while token := next(tokens, None):
             match token:
                 case yaml.BlockMappingStartToken():
                     return self.transform_mapping(tokens)
-                # case yaml.ScalarToken() if token.value == 'gen':
-                #     return self.transform_dispatch_gen(tokens)
                 case yaml.ScalarToken():
                     return self.transform_scalar(token)
 
@@ -51,18 +57,8 @@ class YamlTransformer:
         self.gen(meta, [token.value, [('', 1)], [('', 1)], None])
         return token.value
 
-    # def transform_dispatch_gen(self,
-    #                            tokens: Iterator[yaml.Token]):
-    #     while token := next(tokens, None):
-    #         match token:
-    #             case yaml.BlockMappingStartToken():
-    #                 self.transform_gen_mapping(tokens)
-    #                 return
-
     def transform_mapping(self, tokens: Iterator[yaml.Token]):
         """A term with parallel keys and key->value rules"""
-        key_token, value_token = None, None
-        key_name, value_name = None, None
         while token := next(tokens, None):
             match token:
                 case yaml.BlockEndToken():
@@ -78,11 +74,11 @@ class YamlTransformer:
             match token:
                 case yaml.KeyToken():
                     key_token = token
-                    key_name = self.transform_dispatch(tokens)
+                    key_name = self.transform_object(tokens)
                 case yaml.ValueToken():
                     key_meta = Meta(key_token, key_token)
                     key = self.term_ref(key_meta, [key_name])
-                    value_name = self.transform_dispatch(tokens)
+                    value_name = self.transform_object(tokens)
                     value_meta = Meta(token, token)
                     value = self.term_ref(value_meta, [value_name]) if value_name else self.id0([None])
                     meta = Meta(key_token, token)
