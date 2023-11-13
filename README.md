@@ -13,13 +13,17 @@ By interpreting YAML documents as Hypergraphs we provide a syntax rid of keyword
 ...
 ---
 associativity:
-  - [ { μ: 0 }, μ ]
-  - [ { 0: μ }, μ ]
+  - - μ: 0
+    - μ
+  - - 0: μ
+    - μ
 unit left:
-  - [ { η: 0 }, μ ]
+  - - η: 0
+    - μ
   - 0
 unit right:
-  - [ { 0: η }, μ ]
+  - - 0: η
+    - μ
   - 0
 ...
 ```
