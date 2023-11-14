@@ -56,6 +56,9 @@ class YamlTransformer:
                 case yaml.BlockMappingStartToken():
                     tokens = itertools.chain([token], tokens)
                     return self.transform_mapping(tokens)
+                case yaml.BlockSequenceStartToken():
+                    tokens = itertools.chain([token], tokens)
+                    return self.transform_sequence(tokens)
                 case yaml.ScalarToken():
                     tokens = itertools.chain([token], tokens)
                     return self.transform_scalar(tokens)
@@ -100,3 +103,26 @@ class YamlTransformer:
                     meta = Meta(key_token, token)
                     self.def_statement(meta, [key_name, value, None])
                     return key_name
+
+    def transform_sequence(self, tokens: Iterator[yaml.Token]):
+        """A term with parallel keys and key->value rules"""
+        start_token = None
+        rw_name = None
+        rw_part_names = []
+        while token := next(tokens, None):
+            match token:
+                case yaml.BlockEndToken():
+                    meta = Meta(start_token, token)
+                    term = self.term_ref(meta, [rw_name])
+                    rw_parts = [self.rewrite_part(meta,
+                                                  [False, [0, 0, None],
+                                                  ['rule', [rw_name]], None])
+                                for rw_name in rw_part_names]
+                    self.rewrite(meta, [False, rw_name, term, *rw_parts])
+                    return rw_name
+                case yaml.BlockSequenceStartToken():
+                    start_token = token
+                    rw_name = self.transform_object(tokens)
+                case _:
+                    value_name = self.transform_object(tokens)
+                    rw_part_names.append(value_name)
