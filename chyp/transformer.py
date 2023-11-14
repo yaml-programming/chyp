@@ -25,18 +25,19 @@ class Meta:
 
 class YamlTransformer:
     def transform(self, tokens):
+        """sequential document composition where previous ones give rules to the next ones"""
         tokens: Iterator[yaml.Token] = iter(tokens)
         stream_name = None
+        # the very first rule rewrites 0 to the file name
         while token := next(tokens, None):
             match token:
                 case yaml.StreamEndToken():
-                    return
+                    return stream_name
                 case yaml.StreamStartToken():
                     stream_name = self.transform_document(tokens)
                 case _:
                     tokens = itertools.chain([token], tokens)
                     stream_name = self.transform_document(tokens)
-                    self.transform_document(tokens)
 
     def transform_document(self, tokens: Iterator[yaml.Token]):
         document_name = None
@@ -51,6 +52,7 @@ class YamlTransformer:
                     document_name = self.transform_object(tokens)
 
     def transform_object(self, tokens: Iterator[yaml.Token]):
+        """parallel (mapping) and sequential compositions of scalars"""
         while token := next(tokens, None):
             match token:
                 case yaml.BlockMappingStartToken():
@@ -64,6 +66,7 @@ class YamlTransformer:
                     return self.transform_scalar(tokens)
 
     def transform_scalar(self, tokens: Iterator[yaml.Token]):
+        """user-specified names. remember: only connectivity matters."""
         while token := next(tokens, None):
             match token:
                 case yaml.ScalarToken():
@@ -72,7 +75,7 @@ class YamlTransformer:
                     return token.value
 
     def transform_mapping(self, tokens: Iterator[yaml.Token]):
-        """A term with parallel keys and key->value rules"""
+        """parallel keys and key->value rules"""
         mapping_token, mapping_name = None, None
         while token := next(tokens, None):
             match token:
@@ -86,7 +89,7 @@ class YamlTransformer:
                     mapping_name = self.transform_mapping_entry(tokens)
 
     def transform_mapping_entry(self, tokens: Iterator[yaml.Token]):
-        """a key->value rule"""
+        """a key->value sequential rule"""
         key_token, key_name = None, None
         while token := next(tokens, None):
             match token:
@@ -104,25 +107,22 @@ class YamlTransformer:
                     self.def_statement(meta, [key_name, value, None])
                     return key_name
 
+    # TODO move rewriting to the stream level
     def transform_sequence(self, tokens: Iterator[yaml.Token]):
-        """A term with parallel keys and key->value rules"""
-        start_token = None
+        """sequential composition of an arbitrary number of objects"""
         rw_name = None
-        rw_part_names = []
         while token := next(tokens, None):
             match token:
                 case yaml.BlockEndToken():
-                    meta = Meta(start_token, token)
-                    term = self.term_ref(meta, [rw_name])
-                    rw_parts = [self.rewrite_part(meta,
-                                                  [False, [0, 0, None],
-                                                  ['rule', [rw_name]], None])
-                                for rw_name in rw_part_names]
-                    self.rewrite(meta, [False, rw_name, term, *rw_parts])
+                    meta = Meta(token, token)
+                    self.def_statement(meta, [rw_name, term, None])
                     return rw_name
                 case yaml.BlockSequenceStartToken():
-                    start_token = token
                     rw_name = self.transform_object(tokens)
+                    meta = Meta(token, token)
+                    term = self.term_ref(meta, [rw_name])
                 case _:
                     value_name = self.transform_object(tokens)
-                    rw_part_names.append(value_name)
+                    meta = Meta(token, token)
+                    value = self.term_ref(meta, [value_name])
+                    term = self.seq(meta, [term, value])
