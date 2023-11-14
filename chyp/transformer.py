@@ -42,7 +42,7 @@ class YamlTransformer:
         document_name = None
         while token := next(tokens, None):
             match token:
-                case yaml.DocumentEndToken():
+                case yaml.DocumentEndToken() | yaml.StreamEndToken():
                     return document_name
                 case yaml.DocumentStartToken():
                     document_name = self.transform_object(tokens)
@@ -70,16 +70,17 @@ class YamlTransformer:
 
     def transform_mapping(self, tokens: Iterator[yaml.Token]):
         """A term with parallel keys and key->value rules"""
-        mapping_token = None
+        mapping_token, mapping_name = None, None
         while token := next(tokens, None):
             match token:
                 case yaml.BlockEndToken():
-                    return
+                    return mapping_name
                 case yaml.BlockMappingStartToken():
                     mapping_token = token
                 case yaml.KeyToken():
                     tokens = itertools.chain([token], tokens)
-                    self.transform_mapping_entry(tokens)
+                    # TODO multiple entries
+                    mapping_name = self.transform_mapping_entry(tokens)
 
     def transform_mapping_entry(self, tokens: Iterator[yaml.Token]):
         """a key->value rule"""
@@ -90,12 +91,12 @@ class YamlTransformer:
                     key_token = token
                     key_name = self.transform_object(tokens)
                 case yaml.ValueToken():
-                    key_meta = Meta(key_token, key_token)
-                    key = self.term_ref(key_meta, [key_name])
+                    # key_meta = Meta(key_token, key_token)
+                    # key = self.term_ref(key_meta, [key_name])
                     value_name = self.transform_object(tokens)
                     value_meta = Meta(token, token)
                     value = self.term_ref(value_meta, [value_name]) \
                             if value_name else self.id0([None])
                     meta = Meta(key_token, token)
-                    self.rule(meta, [key_name, key, False, value])
+                    self.def_statement(meta, [key_name, value, None])
                     return key_name
