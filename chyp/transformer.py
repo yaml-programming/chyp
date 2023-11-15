@@ -25,19 +25,25 @@ class Meta:
 
 class YamlTransformer:
     def transform(self, tokens):
-        """sequential document composition where previous ones give rules to the next ones"""
+        """documents give rewriting rules"""
         tokens: Iterator[yaml.Token] = iter(tokens)
-        stream_name = None
+        document_name = None
         # the very first rule rewrites 0 to the file name
         while token := next(tokens, None):
             match token:
                 case yaml.StreamEndToken():
-                    return stream_name
+                    return document_name
                 case yaml.StreamStartToken():
-                    stream_name = self.transform_document(tokens)
-                case _:
+                    document_name = self.transform_document(tokens)
+                case yaml.DocumentStartToken():
+                    meta = Meta(token, token)
                     tokens = itertools.chain([token], tokens)
-                    stream_name = self.transform_document(tokens)
+                    term = self.term_ref(meta, [document_name])
+                    rw_part_name = self.transform_document(tokens)
+                    rw_term = self.term_ref(meta, [rw_part_name])
+                    rw_part = self.rewrite_part(meta, [
+                         False, [0, 0, rw_term], None])
+                    self.rewrite(meta, [False, document_name, term, rw_part])
 
     def transform_document(self, tokens: Iterator[yaml.Token]):
         document_name = None
@@ -46,10 +52,10 @@ class YamlTransformer:
                 case yaml.DocumentEndToken() | yaml.StreamEndToken():
                     return document_name
                 case yaml.DocumentStartToken():
-                    document_name = self.transform_object(tokens)
+                    return self.transform_object(tokens)
                 case _:
                     tokens = itertools.chain([token], tokens)
-                    document_name = self.transform_object(tokens)
+                    return self.transform_object(tokens)
 
     def transform_object(self, tokens: Iterator[yaml.Token]):
         """parallel (mapping) and sequential compositions of scalars"""
@@ -107,7 +113,6 @@ class YamlTransformer:
                     self.def_statement(meta, [key_name, value, None])
                     return key_name
 
-    # TODO move rewriting to the stream level
     def transform_sequence(self, tokens: Iterator[yaml.Token]):
         """sequential composition of an arbitrary number of objects"""
         rw_name = None
